@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=q2connect
+Comment=Quake II server browser for Q2PRO
+Exec=/ABSOLUTE/PATH/TO/q2connect/dist/q2connect
+Icon=/ABSOLUTE/PATH/TO/q2connect/dist/assets/icon.svg
+Terminal=false
+Categories=Game;ActionGame;
+StartupNotify=false

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="256" y2="256">
+      <stop offset="0%" stop-color="#061525"/>
+      <stop offset="100%" stop-color="#02060b"/>
+    </linearGradient>
+    <radialGradient id="scan" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#50dcff" stop-opacity="0.28"/>
+      <stop offset="62%" stop-color="#50dcff" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#50dcff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <rect width="256" height="256" rx="46" fill="url(#bg)"/>
+  <circle cx="128" cy="128" r="92" fill="url(#scan)"/>
+
+  <circle cx="128" cy="128" r="76" fill="none" stroke="#50dcff" stroke-width="3" opacity="0.58"/>
+  <ellipse cx="128" cy="128" rx="76" ry="30" fill="none" stroke="#50dcff" stroke-width="2" opacity="0.34"/>
+  <ellipse cx="128" cy="128" rx="31" ry="76" fill="none" stroke="#50dcff" stroke-width="2" opacity="0.34"/>
+  <path d="M 52 128 H 204" stroke="#50dcff" stroke-width="2" opacity="0.34"/>
+  <path d="M 128 52 V 204" stroke="#50dcff" stroke-width="2" opacity="0.34"/>
+
+  <path d="M 82 158 L 112 96 L 140 144 L 157 115 L 178 158" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" opacity="0.92" filter="url(#glow)"/>
+  <circle cx="182" cy="84" r="12" fill="#ff5fd2" filter="url(#glow)"/>
+  <circle cx="70" cy="112" r="7" fill="#78ff78" filter="url(#glow)"/>
+  <circle cx="188" cy="177" r="8" fill="#ffd250" filter="url(#glow)"/>
+
+  <path d="M 48 76 V 48 H 76" fill="none" stroke="#50dcff" stroke-width="5" stroke-linecap="round" opacity="0.8"/>
+  <path d="M 180 48 H 208 V 76" fill="none" stroke="#50dcff" stroke-width="5" stroke-linecap="round" opacity="0.8"/>
+  <path d="M 208 180 V 208 H 180" fill="none" stroke="#50dcff" stroke-width="5" stroke-linecap="round" opacity="0.8"/>
+  <path d="M 76 208 H 48 V 180" fill="none" stroke="#50dcff" stroke-width="5" stroke-linecap="round" opacity="0.8"/>
+</svg>
