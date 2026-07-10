@@ -1,8 +1,9 @@
 {
   "theme": "cyber",
-  "masters": ["+http://q2servers.com/?raw=2"],
+  "masters": ["+https://q2servers.com/?raw=2"],
   "favorites": [],
   "broadcast": false,
+  "hide_wallfly": true,
   "ping_rate": 80,
   "client_path": "/home/user/Projects/q2manager/dist/_sources/q2pro/build-lin64/q2pro",
   "fullscreen": false,

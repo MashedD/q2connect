@@ -20,3 +20,7 @@ Use `q2connect.desktop.example` as a template. Replace `/ABSOLUTE/PATH/TO/q2conn
 - `1`-`5`: sort by hostname, mod, map, players, RTT
 - `C`: copy `connect <address>`
 - `Esc`: quit
+
+## Configuration
+
+`hide_wallfly` defaults to `true`. While enabled, players named exactly `WallFly[BZZZ]` are hidden from the player details and excluded from each server's player count and the total player count. Set it to `false` in `q2connect.json` to show and count them.

@@ -44,9 +44,10 @@ constexpr double kPingTimeout = 3.0;
 
 struct Config {
     std::string theme = "cyber";
-    std::vector<std::string> masters = {"+http://q2servers.com/?raw=2"};
+    std::vector<std::string> masters = {"+https://q2servers.com/?raw=2"};
     std::vector<std::string> favorites;
     bool broadcast = false;
+    bool hideWallFly = true;
     int pingRate = 80;
     std::string clientPath = "/home/user/Projects/q2manager/dist/_sources/q2pro/build-lin64/q2pro";
     bool fullscreen = false;
@@ -136,7 +137,7 @@ static std::string ShellQuote(const std::string &s) {
 
 static json ConfigJson(const Config &config) {
     return json{{"theme", config.theme}, {"masters", config.masters}, {"favorites", config.favorites}, {"broadcast", config.broadcast},
-                {"ping_rate", config.pingRate}, {"client_path", config.clientPath}, {"fullscreen", config.fullscreen},
+                {"hide_wallfly", config.hideWallFly}, {"ping_rate", config.pingRate}, {"client_path", config.clientPath}, {"fullscreen", config.fullscreen},
                 {"window_width", config.windowWidth}, {"window_height", config.windowHeight}};
 }
 
@@ -159,6 +160,7 @@ static Config LoadConfig() {
         config.masters = data.value("masters", config.masters);
         config.favorites = data.value("favorites", config.favorites);
         config.broadcast = data.value("broadcast", config.broadcast);
+        config.hideWallFly = data.value("hide_wallfly", config.hideWallFly);
         config.pingRate = std::clamp(data.value("ping_rate", config.pingRate), 1, 100);
         config.clientPath = data.value("client_path", config.clientPath);
         config.fullscreen = data.value("fullscreen", config.fullscreen);
@@ -232,10 +234,15 @@ static std::string SockKey(const sockaddr_in &addr) {
     return std::to_string(addr.sin_addr.s_addr) + ":" + std::to_string(addr.sin_port);
 }
 
-static std::string FetchUrl(const std::string &url) {
+struct FetchResult {
+    std::string data;
+    std::string error;
+};
+
+static FetchResult FetchUrl(const std::string &url) {
     const std::string cmd = "curl -fsSL --max-time 20 " + ShellQuote(url) + " 2>/dev/null";
     FILE *pipe = popen(cmd.c_str(), "r");
-    if (!pipe) return {};
+    if (!pipe) return {{}, "could not start curl"};
     std::string data;
     std::array<char, 4096> buffer{};
     while (true) {
@@ -243,8 +250,14 @@ static std::string FetchUrl(const std::string &url) {
         if (read > 0) data.append(buffer.data(), read);
         if (read < buffer.size()) break;
     }
-    pclose(pipe);
-    return data;
+    const int result = pclose(pipe);
+    if (result == -1) return {{}, "could not read curl result"};
+    if (!WIFEXITED(result) || WEXITSTATUS(result) != 0) {
+        const int code = WIFEXITED(result) ? WEXITSTATUS(result) : -1;
+        return {{}, code == 22 ? "HTTP server returned an error" : "curl failed (exit " + std::to_string(code) + ")"};
+    }
+    if (data.empty()) return {{}, "server returned an empty response"};
+    return {std::move(data), {}};
 }
 
 static void AddServer(std::vector<ServerSlot> &servers, std::unordered_map<std::string, size_t> &seen, const sockaddr_in &addr, const std::string &display) {
@@ -292,6 +305,7 @@ static std::vector<std::string> SplitCommandish(const std::vector<std::string> &
 static std::vector<ServerSlot> LoadServerSources(const Config &config, std::string &status) {
     std::vector<ServerSlot> servers;
     std::unordered_map<std::string, size_t> seen;
+    std::vector<std::string> errors;
 
     for (const std::string &fav : config.favorites) {
         if (auto addr = ResolveAddress(fav)) AddServer(servers, seen, *addr, fav);
@@ -315,9 +329,13 @@ static std::vector<ServerSlot> LoadServerSources(const Config &config, std::stri
 
         if (source.rfind("http://", 0) == 0 || source.rfind("https://", 0) == 0) {
             status = "Fetching " + source;
-            const std::string data = FetchUrl(source);
-            if (binary) ParseBinaryList(servers, seen, data, chunk);
-            else ParsePlainList(servers, seen, data);
+            FetchResult fetched = FetchUrl(source);
+            if (!fetched.error.empty()) {
+                errors.push_back(source + ": " + fetched.error);
+                continue;
+            }
+            if (binary) ParseBinaryList(servers, seen, fetched.data, chunk);
+            else ParsePlainList(servers, seen, fetched.data);
         } else if (source.rfind("file://", 0) == 0) {
             std::ifstream in(source.substr(7), std::ios::binary);
             std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -331,7 +349,9 @@ static std::vector<ServerSlot> LoadServerSources(const Config &config, std::stri
         }
     }
 
-    status = "Loaded " + std::to_string(servers.size()) + " servers";
+    if (servers.empty() && !errors.empty()) status = "Server list unavailable: " + errors.front();
+    else if (!errors.empty()) status = "Loaded " + std::to_string(servers.size()) + " servers; " + errors.front();
+    else status = "Loaded " + std::to_string(servers.size()) + " servers";
     return servers;
 }
 
@@ -368,7 +388,7 @@ static std::string ParseToken(const std::string &line, size_t &pos) {
     return line.substr(start, pos - start);
 }
 
-static void ApplyStatusResponse(ServerSlot &slot, const std::string &payload, int rtt) {
+static void ApplyStatusResponse(ServerSlot &slot, const std::string &payload, int rtt, bool hideWallFly) {
     std::string text = payload;
     if (text.rfind("print\n", 0) == 0) text.erase(0, 6);
     if (text.rfind("print\r\n", 0) == 0) text.erase(0, 7);
@@ -393,6 +413,7 @@ static void ApplyStatusResponse(ServerSlot &slot, const std::string &payload, in
             player.score = std::stoi(ParseToken(line, pos));
             player.ping = std::stoi(ParseToken(line, pos));
             player.name = ParseToken(line, pos);
+            if (hideWallFly && player.name == "WallFly[BZZZ]") continue;
             slot.playerRows.push_back(std::move(player));
         } catch (...) {}
     }
@@ -470,7 +491,7 @@ static void WorkerScan(Config config) {
                 if (slot.status != SlotStatus::Valid) ++completed;
                 const int rtt = static_cast<int>((NowSeconds() - slot.sentAt) * 1000.0);
                 std::string payload(buffer.data() + 4, static_cast<size_t>(len - 4));
-                ApplyStatusResponse(slot, payload, rtt);
+                ApplyStatusResponse(slot, payload, rtt, config.hideWallFly);
             }
         }
 
