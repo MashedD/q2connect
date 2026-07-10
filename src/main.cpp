@@ -595,6 +595,8 @@ int main() {
     double toastUntil = 0.0;
     double lastClickAt = 0.0;
     int lastClickIndex = -1;
+    bool draggingScrollbar = false;
+    float scrollbarDragOffset = 0.0f;
 
     while (!WindowShouldClose()) {
         BrowserState state;
@@ -623,18 +625,58 @@ int main() {
         const int visibleRows = std::max(1, tableHeight / rowHeight - 1);
 
         selected = std::clamp(selected, 0, std::max(0, static_cast<int>(state.servers.size()) - 1));
+        const bool selectionMoved = IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_UP) ||
+                                    IsKeyPressed(KEY_PAGE_DOWN) || IsKeyPressed(KEY_PAGE_UP);
         if (IsKeyPressed(KEY_DOWN)) ++selected;
         if (IsKeyPressed(KEY_UP)) --selected;
         if (IsKeyPressed(KEY_PAGE_DOWN)) selected += visibleRows;
         if (IsKeyPressed(KEY_PAGE_UP)) selected -= visibleRows;
         selected = std::clamp(selected, 0, std::max(0, static_cast<int>(state.servers.size()) - 1));
-        scroll -= static_cast<int>(GetMouseWheelMove()) * 3;
-        if (selected < scroll) scroll = selected;
-        if (selected >= scroll + visibleRows) scroll = selected - visibleRows + 1;
-        scroll = std::clamp(scroll, 0, std::max(0, static_cast<int>(state.servers.size()) - visibleRows));
+        const int maxScroll = std::max(0, static_cast<int>(state.servers.size()) - visibleRows);
+        const int margin = 18;
+        const int tableWidth = GetScreenWidth() - margin * 2;
+        const int scrollbarWidth = 14;
+        const Rectangle scrollbarTrack{
+            static_cast<float>(margin + tableWidth - scrollbarWidth),
+            static_cast<float>(tableTop + rowHeight),
+            static_cast<float>(scrollbarWidth),
+            static_cast<float>(tableHeight - rowHeight)
+        };
+        const float thumbHeight = maxScroll > 0
+            ? std::max(28.0f, scrollbarTrack.height * visibleRows / static_cast<float>(state.servers.size()))
+            : scrollbarTrack.height;
+        const float thumbTravel = std::max(0.0f, scrollbarTrack.height - thumbHeight);
+        const float thumbY = scrollbarTrack.y + (maxScroll > 0 ? thumbTravel * scroll / maxScroll : 0.0f);
+        const Rectangle scrollbarThumb{scrollbarTrack.x, thumbY, scrollbarTrack.width, thumbHeight};
+
+        const Vector2 mouse = GetMousePosition();
+        if (CheckCollisionPointRec(mouse, Rectangle{static_cast<float>(margin), static_cast<float>(tableTop),
+                                                    static_cast<float>(tableWidth), static_cast<float>(tableHeight)})) {
+            scroll -= static_cast<int>(GetMouseWheelMove()) * 3;
+        }
+        if (selectionMoved) {
+            if (selected < scroll) scroll = selected;
+            if (selected >= scroll + visibleRows) scroll = selected - visibleRows + 1;
+        }
+        if (maxScroll > 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mouse, scrollbarTrack)) {
+            if (CheckCollisionPointRec(mouse, scrollbarThumb)) {
+                draggingScrollbar = true;
+                scrollbarDragOffset = mouse.y - scrollbarThumb.y;
+            } else {
+                scroll = static_cast<int>(((mouse.y - scrollbarTrack.y - thumbHeight / 2.0f) / thumbTravel) * maxScroll + 0.5f);
+                draggingScrollbar = true;
+                scrollbarDragOffset = thumbHeight / 2.0f;
+            }
+        }
+        if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) draggingScrollbar = false;
+        if (draggingScrollbar && maxScroll > 0 && thumbTravel > 0.0f) {
+            scroll = static_cast<int>(((mouse.y - scrollbarTrack.y - scrollbarDragOffset) / thumbTravel) * maxScroll + 0.5f);
+        }
+        scroll = std::clamp(scroll, 0, maxScroll);
 
         bool activate = IsKeyPressed(KEY_ENTER);
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && GetMouseY() >= tableTop + rowHeight && GetMouseY() < tableTop + tableHeight) {
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !CheckCollisionPointRec(mouse, scrollbarTrack) &&
+            GetMouseY() >= tableTop + rowHeight && GetMouseY() < tableTop + tableHeight) {
             const int clicked = scroll + (GetMouseY() - tableTop - rowHeight) / rowHeight;
             if (clicked >= 0 && clicked < static_cast<int>(state.servers.size())) {
                 activate = clicked == lastClickIndex && GetTime() - lastClickAt < 0.35;
@@ -673,9 +715,7 @@ int main() {
         const std::string summary = std::to_string(totalPlayers) + " players on " + std::to_string(validServers) + " servers";
         DrawText(summary.c_str(), GetScreenWidth() - MeasureText(summary.c_str(), bodyFontSize) - 18, 20, bodyFontSize, theme.good);
 
-        const int margin = 18;
-        const int tableWidth = GetScreenWidth() - margin * 2;
-        const std::array<int, 5> widths = {std::max(260, tableWidth - 650), 125, 135, 105, 80};
+        const std::array<int, 5> widths = {std::max(260, tableWidth - scrollbarWidth - 650), 125, 135, 105, 80};
         const std::array<const char *, 5> headers = {"Hostname", "Mod", "Map", "Players", "RTT"};
         DrawRectangle(margin, tableTop, tableWidth, tableHeight, theme.panel);
         DrawRectangleLinesEx(Rectangle{static_cast<float>(margin), static_cast<float>(tableTop), static_cast<float>(tableWidth), static_cast<float>(tableHeight)}, 1.0f, theme.border);
@@ -693,7 +733,7 @@ int main() {
             if (index >= static_cast<int>(state.servers.size())) break;
             const ServerSlot &slot = state.servers[static_cast<size_t>(index)];
             const int y = tableTop + rowHeight * (row + 1) + 4;
-            if (index == selected) DrawRectangle(margin + 1, y - 4, tableWidth - 2, rowHeight, theme.selected);
+            if (index == selected) DrawRectangle(margin + 1, y - 4, tableWidth - scrollbarWidth - 1, rowHeight, theme.selected);
             Color rowColor = theme.text;
             if (slot.status == SlotStatus::Pending) rowColor = theme.warn;
             if (slot.status == SlotStatus::Error) rowColor = theme.error;
@@ -705,6 +745,14 @@ int main() {
             DrawCell(players, x, y, widths[3], bodyFontSize, rowColor); x += widths[3];
             DrawCell(slot.status == SlotStatus::Valid ? std::to_string(slot.rtt) : "???", x, y, widths[4], bodyFontSize, rowColor);
         }
+
+        DrawRectangleRec(scrollbarTrack, theme.panel2);
+        DrawLine(static_cast<int>(scrollbarTrack.x), static_cast<int>(scrollbarTrack.y),
+                 static_cast<int>(scrollbarTrack.x), static_cast<int>(scrollbarTrack.y + scrollbarTrack.height), theme.border);
+        const float drawnThumbY = scrollbarTrack.y + (maxScroll > 0 ? thumbTravel * scroll / maxScroll : 0.0f);
+        DrawRectangleRec(Rectangle{scrollbarTrack.x + 3.0f, drawnThumbY + 2.0f,
+                                   scrollbarTrack.width - 6.0f, std::max(0.0f, thumbHeight - 4.0f)},
+                         maxScroll > 0 ? theme.border : theme.muted);
 
         const int detailTop = tableTop + tableHeight + 8;
         DrawRectangle(margin, detailTop, tableWidth, detailsHeight, theme.panel2);
