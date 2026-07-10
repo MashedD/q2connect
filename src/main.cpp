@@ -611,10 +611,14 @@ int main() {
         if (IsKeyPressed(KEY_FIVE)) { sortColumn = 4; sortDescending = false; }
         SortServers(state.servers, sortColumn, sortDescending);
 
-        const int tableTop = 72;
-        const int rowHeight = 24;
-        const int statusHeight = 30;
-        const int detailsHeight = std::min(220, GetScreenHeight() / 3);
+        // Raylib's built-in font is a bitmap font. Multiples of its native
+        // 10-pixel size stay crisp instead of being resampled unevenly.
+        constexpr int bodyFontSize = 20;
+        constexpr int smallFontSize = 20;
+        const int tableTop = 76;
+        const int rowHeight = 30;
+        const int statusHeight = 38;
+        const int detailsHeight = std::min(240, GetScreenHeight() / 3);
         const int tableHeight = GetScreenHeight() - tableTop - detailsHeight - statusHeight - 16;
         const int visibleRows = std::max(1, tableHeight / rowHeight - 1);
 
@@ -662,16 +666,16 @@ int main() {
 
         BeginDrawing();
         ClearBackground(theme.background);
-        DrawRectangle(0, 0, GetScreenWidth(), 54, theme.panel);
-        DrawText("q2connect", 18, 15, 28, theme.text);
-        DrawText("Q2PRO-style server browser", 185, 23, 16, theme.muted);
+        DrawRectangle(0, 0, GetScreenWidth(), 60, theme.panel);
+        DrawText("q2connect", 18, 15, 30, theme.text);
+        DrawText("Q2PRO-style server browser", 185, 22, bodyFontSize, theme.muted);
 
         const std::string summary = std::to_string(totalPlayers) + " players on " + std::to_string(validServers) + " servers";
-        DrawText(summary.c_str(), GetScreenWidth() - MeasureText(summary.c_str(), 18) - 18, 20, 18, theme.good);
+        DrawText(summary.c_str(), GetScreenWidth() - MeasureText(summary.c_str(), bodyFontSize) - 18, 20, bodyFontSize, theme.good);
 
         const int margin = 18;
         const int tableWidth = GetScreenWidth() - margin * 2;
-        const std::array<int, 5> widths = {std::max(260, tableWidth - 560), 105, 110, 90, 70};
+        const std::array<int, 5> widths = {std::max(260, tableWidth - 650), 125, 135, 105, 80};
         const std::array<const char *, 5> headers = {"Hostname", "Mod", "Map", "Players", "RTT"};
         DrawRectangle(margin, tableTop, tableWidth, tableHeight, theme.panel);
         DrawRectangleLinesEx(Rectangle{static_cast<float>(margin), static_cast<float>(tableTop), static_cast<float>(tableWidth), static_cast<float>(tableHeight)}, 1.0f, theme.border);
@@ -679,7 +683,7 @@ int main() {
         int x = margin + 8;
         for (size_t i = 0; i < headers.size(); ++i) {
             const std::string label = std::string(headers[i]) + (sortColumn == static_cast<int>(i) ? (sortDescending ? " v" : " ^") : "");
-            DrawCell(label, x, tableTop + 5, widths[i], 16, theme.border);
+            DrawCell(label, x, tableTop + 5, widths[i], bodyFontSize, theme.border);
             x += widths[i];
         }
         DrawLine(margin, tableTop + rowHeight, margin + tableWidth, tableTop + rowHeight, theme.border);
@@ -694,12 +698,12 @@ int main() {
             if (slot.status == SlotStatus::Pending) rowColor = theme.warn;
             if (slot.status == SlotStatus::Error) rowColor = theme.error;
             x = margin + 8;
-            DrawCell(slot.status == SlotStatus::Valid ? slot.hostname : slot.address, x, y, widths[0], 16, rowColor); x += widths[0];
-            DrawCell(slot.mod, x, y, widths[1], 16, rowColor); x += widths[1];
-            DrawCell(slot.map, x, y, widths[2], 16, rowColor); x += widths[2];
+            DrawCell(slot.status == SlotStatus::Valid ? slot.hostname : slot.address, x, y, widths[0], bodyFontSize, rowColor); x += widths[0];
+            DrawCell(slot.mod, x, y, widths[1], bodyFontSize, rowColor); x += widths[1];
+            DrawCell(slot.map, x, y, widths[2], bodyFontSize, rowColor); x += widths[2];
             const std::string players = slot.status == SlotStatus::Valid ? std::to_string(slot.players) + "/" + slot.maxClients : (slot.status == SlotStatus::Pending ? "ping" : "down");
-            DrawCell(players, x, y, widths[3], 16, rowColor); x += widths[3];
-            DrawCell(slot.status == SlotStatus::Valid ? std::to_string(slot.rtt) : "???", x, y, widths[4], 16, rowColor);
+            DrawCell(players, x, y, widths[3], bodyFontSize, rowColor); x += widths[3];
+            DrawCell(slot.status == SlotStatus::Valid ? std::to_string(slot.rtt) : "???", x, y, widths[4], bodyFontSize, rowColor);
         }
 
         const int detailTop = tableTop + tableHeight + 8;
@@ -708,21 +712,21 @@ int main() {
 
         if (selected >= 0 && selected < static_cast<int>(state.servers.size())) {
             const ServerSlot &slot = state.servers[static_cast<size_t>(selected)];
-            DrawText(slot.address.c_str(), margin + 12, detailTop + 10, 18, theme.good);
-            DrawText("Rules", margin + 12, detailTop + 40, 18, theme.border);
-            int y = detailTop + 66;
+            DrawText(slot.address.c_str(), margin + 12, detailTop + 10, bodyFontSize, theme.good);
+            DrawText("Rules", margin + 12, detailTop + 42, bodyFontSize, theme.border);
+            int y = detailTop + 70;
             int shown = 0;
             for (const auto &[key, value] : slot.rules) {
                 if (shown++ >= 6) break;
-                DrawCell(key + " = " + value, margin + 12, y, tableWidth / 2 - 24, 15, theme.muted);
-                y += 20;
+                DrawCell(key + " = " + value, margin + 12, y, tableWidth / 2 - 24, smallFontSize, theme.muted);
+                y += 24;
             }
-            DrawText("Players", margin + tableWidth / 2, detailTop + 40, 18, theme.border);
-            y = detailTop + 66;
-            for (size_t i = 0; i < slot.playerRows.size() && i < 7; ++i) {
+            DrawText("Players", margin + tableWidth / 2, detailTop + 42, bodyFontSize, theme.border);
+            y = detailTop + 70;
+            for (size_t i = 0; i < slot.playerRows.size() && i < 6; ++i) {
                 const PlayerRow &p = slot.playerRows[i];
-                DrawCell(std::to_string(p.score) + "  " + std::to_string(p.ping) + "  " + p.name, margin + tableWidth / 2, y, tableWidth / 2 - 24, 15, theme.text);
-                y += 20;
+                DrawCell(std::to_string(p.score) + "  " + std::to_string(p.ping) + "  " + p.name, margin + tableWidth / 2, y, tableWidth / 2 - 24, smallFontSize, theme.text);
+                y += 24;
             }
         }
 
@@ -734,7 +738,7 @@ int main() {
         }
         std::string footer = state.status + "   R/F5 refresh   Enter launch   C copy   1-5 sort   Esc quit";
         if (!toast.empty() && GetTime() < toastUntil) footer = toast;
-        DrawText(footer.c_str(), 18, statusTop + 8, 15, theme.text);
+        DrawText(footer.c_str(), 18, statusTop + 9, smallFontSize, theme.text);
         EndDrawing();
     }
 
