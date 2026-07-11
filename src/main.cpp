@@ -53,6 +53,7 @@ struct Config {
     bool fullscreen = false;
     int windowWidth = 1280;
     int windowHeight = 720;
+    fs::path serverCachePath;
 };
 
 struct ThemePalette {
@@ -149,6 +150,7 @@ static void SaveConfig(const fs::path &path, const Config &config) {
 static Config LoadConfig() {
     Config config;
     const fs::path path = fs::path(GetApplicationDirectory()) / "q2connect.json";
+    config.serverCachePath = path.parent_path() / "q2servers-cache.txt";
     std::ifstream in(path);
     if (!in) {
         SaveConfig(path, config);
@@ -292,6 +294,44 @@ static void ParseBinaryList(std::vector<ServerSlot> &servers, std::unordered_map
     }
 }
 
+static bool IsQ2ServersUrl(const std::string &url) {
+    const size_t scheme = url.find("://");
+    if (scheme == std::string::npos) return false;
+    const size_t hostStart = scheme + 3;
+    const size_t hostEnd = url.find_first_of("/:?#", hostStart);
+    const std::string host = url.substr(hostStart, hostEnd - hostStart);
+    return host == "q2servers.com" || host == "www.q2servers.com";
+}
+
+static bool SaveServerCache(const fs::path &path, const std::vector<ServerSlot> &servers) {
+    if (path.empty() || servers.empty()) return false;
+    const fs::path temporary = path.string() + ".tmp";
+    {
+        std::ofstream out(temporary, std::ios::trunc);
+        if (!out) return false;
+        for (const ServerSlot &server : servers) out << AddressToString(server.addr) << '\n';
+        if (!out) return false;
+    }
+    std::error_code error;
+    fs::rename(temporary, path, error);
+    if (!error) return true;
+    fs::remove(path, error);
+    error.clear();
+    fs::rename(temporary, path, error);
+    if (error) fs::remove(temporary);
+    return !error;
+}
+
+static bool LoadServerCache(const fs::path &path, std::vector<ServerSlot> &servers,
+                            std::unordered_map<std::string, size_t> &seen) {
+    std::ifstream in(path);
+    if (!in) return false;
+    const size_t before = servers.size();
+    std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    ParsePlainList(servers, seen, data);
+    return servers.size() > before;
+}
+
 static std::vector<std::string> SplitCommandish(const std::vector<std::string> &items) {
     std::vector<std::string> out;
     for (const std::string &item : items) {
@@ -331,10 +371,27 @@ static std::vector<ServerSlot> LoadServerSources(const Config &config, std::stri
             status = "Fetching " + source;
             FetchResult fetched = FetchUrl(source);
             if (!fetched.error.empty()) {
-                errors.push_back(source + ": " + fetched.error);
+                if (IsQ2ServersUrl(source) && LoadServerCache(config.serverCachePath, servers, seen))
+                    errors.push_back(source + ": " + fetched.error + "; using cached server list");
+                else
+                    errors.push_back(source + ": " + fetched.error);
                 continue;
             }
-            if (binary) ParseBinaryList(servers, seen, fetched.data, chunk);
+            if (IsQ2ServersUrl(source)) {
+                std::vector<ServerSlot> fetchedServers;
+                std::unordered_map<std::string, size_t> fetchedSeen;
+                if (binary) ParseBinaryList(fetchedServers, fetchedSeen, fetched.data, chunk);
+                else ParsePlainList(fetchedServers, fetchedSeen, fetched.data);
+                if (fetchedServers.empty()) {
+                    if (LoadServerCache(config.serverCachePath, servers, seen))
+                        errors.push_back(source + ": response contained no valid servers; using cached server list");
+                    else
+                        errors.push_back(source + ": response contained no valid servers");
+                    continue;
+                }
+                SaveServerCache(config.serverCachePath, fetchedServers);
+                for (const ServerSlot &server : fetchedServers) AddServer(servers, seen, server.addr, server.address);
+            } else if (binary) ParseBinaryList(servers, seen, fetched.data, chunk);
             else ParsePlainList(servers, seen, fetched.data);
         } else if (source.rfind("file://", 0) == 0) {
             std::ifstream in(source.substr(7), std::ios::binary);

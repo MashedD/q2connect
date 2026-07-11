@@ -24,3 +24,5 @@ Use `q2connect.desktop.example` as a template. Replace `/ABSOLUTE/PATH/TO/q2conn
 ## Configuration
 
 `hide_wallfly` defaults to `true`. While enabled, players named exactly `WallFly[BZZZ]` are hidden from the player details and excluded from each server's player count and the total player count. Set it to `false` in `q2connect.json` to show and count them.
+
+A successful response from `q2servers.com` is saved as `q2servers-cache.txt` beside `q2connect.json`. If the site is unavailable or returns no valid servers, q2connect automatically uses the cached IP list.
