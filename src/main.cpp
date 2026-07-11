@@ -646,6 +646,10 @@ int main() {
     StartScan(config);
     int selected = 0;
     int scroll = 0;
+    int ruleScroll = 0;
+    int playerScroll = 0;
+    std::string ruleScrollAddress;
+    std::string playerScrollAddress;
     int sortColumn = 4;
     bool sortDescending = false;
     std::string toast;
@@ -654,6 +658,10 @@ int main() {
     int lastClickIndex = -1;
     bool draggingScrollbar = false;
     float scrollbarDragOffset = 0.0f;
+    bool draggingRuleScrollbar = false;
+    float ruleScrollbarDragOffset = 0.0f;
+    bool draggingPlayerScrollbar = false;
+    float playerScrollbarDragOffset = 0.0f;
 
     while (!WindowShouldClose()) {
         BrowserState state;
@@ -692,6 +700,7 @@ int main() {
         const int maxScroll = std::max(0, static_cast<int>(state.servers.size()) - visibleRows);
         const int margin = 18;
         const int tableWidth = GetScreenWidth() - margin * 2;
+        const int detailTop = tableTop + tableHeight + 8;
         const int scrollbarWidth = 14;
         const Rectangle scrollbarTrack{
             static_cast<float>(margin + tableWidth - scrollbarWidth),
@@ -707,9 +716,10 @@ int main() {
         const Rectangle scrollbarThumb{scrollbarTrack.x, thumbY, scrollbarTrack.width, thumbHeight};
 
         const Vector2 mouse = GetMousePosition();
+        const float mouseWheel = GetMouseWheelMove();
         if (CheckCollisionPointRec(mouse, Rectangle{static_cast<float>(margin), static_cast<float>(tableTop),
                                                     static_cast<float>(tableWidth), static_cast<float>(tableHeight)})) {
-            scroll -= static_cast<int>(GetMouseWheelMove()) * 3;
+            scroll -= static_cast<int>(mouseWheel) * 3;
         }
         if (selectionMoved) {
             if (selected < scroll) scroll = selected;
@@ -753,6 +763,121 @@ int main() {
             toast = "Copied connect " + state.servers[static_cast<size_t>(selected)].address;
             toastUntil = GetTime() + 2.0;
         }
+
+        const int playerRowHeight = 24;
+        const int visiblePlayerRows = std::max(1, (detailsHeight - 78) / playerRowHeight);
+        const Rectangle ruleViewport{
+            static_cast<float>(margin + 12),
+            static_cast<float>(detailTop + 70),
+            static_cast<float>(tableWidth / 2 - 24),
+            static_cast<float>(visiblePlayerRows * playerRowHeight)
+        };
+        const Rectangle playerViewport{
+            static_cast<float>(margin + tableWidth / 2),
+            static_cast<float>(detailTop + 70),
+            static_cast<float>(tableWidth / 2 - 12),
+            static_cast<float>(visiblePlayerRows * playerRowHeight)
+        };
+        int maxRuleScroll = 0;
+        int maxPlayerScroll = 0;
+        if (selected >= 0 && selected < static_cast<int>(state.servers.size())) {
+            const ServerSlot &slot = state.servers[static_cast<size_t>(selected)];
+            if (ruleScrollAddress != slot.address) {
+                ruleScrollAddress = slot.address;
+                ruleScroll = 0;
+                draggingRuleScrollbar = false;
+            }
+            if (playerScrollAddress != slot.address) {
+                playerScrollAddress = slot.address;
+                playerScroll = 0;
+                draggingPlayerScrollbar = false;
+            }
+            maxRuleScroll = std::max(0, static_cast<int>(slot.rules.size()) - visiblePlayerRows);
+            maxPlayerScroll = std::max(0, static_cast<int>(slot.playerRows.size()) - visiblePlayerRows);
+        } else {
+            ruleScrollAddress.clear();
+            ruleScroll = 0;
+            playerScrollAddress.clear();
+            playerScroll = 0;
+        }
+        if (CheckCollisionPointRec(mouse, ruleViewport)) {
+            ruleScroll -= static_cast<int>(mouseWheel) * 3;
+        }
+        ruleScroll = std::clamp(ruleScroll, 0, maxRuleScroll);
+        if (CheckCollisionPointRec(mouse, playerViewport)) {
+            playerScroll -= static_cast<int>(mouseWheel) * 3;
+        }
+        playerScroll = std::clamp(playerScroll, 0, maxPlayerScroll);
+
+        const Rectangle ruleScrollbarTrack{
+            ruleViewport.x + ruleViewport.width - scrollbarWidth,
+            ruleViewport.y,
+            static_cast<float>(scrollbarWidth),
+            ruleViewport.height
+        };
+        const float ruleThumbHeight = maxRuleScroll > 0
+            ? std::max(28.0f, ruleScrollbarTrack.height * visiblePlayerRows /
+                                   static_cast<float>(visiblePlayerRows + maxRuleScroll))
+            : ruleScrollbarTrack.height;
+        const float ruleThumbTravel = std::max(0.0f, ruleScrollbarTrack.height - ruleThumbHeight);
+        const float ruleThumbY = ruleScrollbarTrack.y +
+            (maxRuleScroll > 0 ? ruleThumbTravel * ruleScroll / maxRuleScroll : 0.0f);
+        const Rectangle ruleScrollbarThumb{
+            ruleScrollbarTrack.x, ruleThumbY, ruleScrollbarTrack.width, ruleThumbHeight
+        };
+        if (maxRuleScroll > 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
+            CheckCollisionPointRec(mouse, ruleScrollbarTrack)) {
+            if (CheckCollisionPointRec(mouse, ruleScrollbarThumb)) {
+                draggingRuleScrollbar = true;
+                ruleScrollbarDragOffset = mouse.y - ruleScrollbarThumb.y;
+            } else {
+                ruleScroll = static_cast<int>(((mouse.y - ruleScrollbarTrack.y - ruleThumbHeight / 2.0f) /
+                                               ruleThumbTravel) * maxRuleScroll + 0.5f);
+                draggingRuleScrollbar = true;
+                ruleScrollbarDragOffset = ruleThumbHeight / 2.0f;
+            }
+        }
+        if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) draggingRuleScrollbar = false;
+        if (draggingRuleScrollbar && maxRuleScroll > 0 && ruleThumbTravel > 0.0f) {
+            ruleScroll = static_cast<int>(((mouse.y - ruleScrollbarTrack.y - ruleScrollbarDragOffset) /
+                                           ruleThumbTravel) * maxRuleScroll + 0.5f);
+        }
+        ruleScroll = std::clamp(ruleScroll, 0, maxRuleScroll);
+
+        const Rectangle playerScrollbarTrack{
+            playerViewport.x + playerViewport.width - scrollbarWidth,
+            playerViewport.y,
+            static_cast<float>(scrollbarWidth),
+            playerViewport.height
+        };
+        const float playerThumbHeight = maxPlayerScroll > 0
+            ? std::max(28.0f, playerScrollbarTrack.height * visiblePlayerRows /
+                                   static_cast<float>(visiblePlayerRows + maxPlayerScroll))
+            : playerScrollbarTrack.height;
+        const float playerThumbTravel = std::max(0.0f, playerScrollbarTrack.height - playerThumbHeight);
+        const float playerThumbY = playerScrollbarTrack.y +
+            (maxPlayerScroll > 0 ? playerThumbTravel * playerScroll / maxPlayerScroll : 0.0f);
+        const Rectangle playerScrollbarThumb{
+            playerScrollbarTrack.x, playerThumbY, playerScrollbarTrack.width, playerThumbHeight
+        };
+        if (maxPlayerScroll > 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
+            CheckCollisionPointRec(mouse, playerScrollbarTrack)) {
+            if (CheckCollisionPointRec(mouse, playerScrollbarThumb)) {
+                draggingPlayerScrollbar = true;
+                playerScrollbarDragOffset = mouse.y - playerScrollbarThumb.y;
+            } else {
+                playerScroll = static_cast<int>(((mouse.y - playerScrollbarTrack.y - playerThumbHeight / 2.0f) /
+                                                 playerThumbTravel) * maxPlayerScroll + 0.5f);
+                draggingPlayerScrollbar = true;
+                playerScrollbarDragOffset = playerThumbHeight / 2.0f;
+            }
+        }
+        if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) draggingPlayerScrollbar = false;
+        if (draggingPlayerScrollbar && maxPlayerScroll > 0 && playerThumbTravel > 0.0f) {
+            playerScroll = static_cast<int>(((mouse.y - playerScrollbarTrack.y - playerScrollbarDragOffset) /
+                                             playerThumbTravel) * maxPlayerScroll + 0.5f);
+        }
+        playerScroll = std::clamp(playerScroll, 0, maxPlayerScroll);
 
         int totalPlayers = 0;
         int validServers = 0;
@@ -811,7 +936,6 @@ int main() {
                                    scrollbarTrack.width - 6.0f, std::max(0.0f, thumbHeight - 4.0f)},
                          maxScroll > 0 ? theme.border : theme.muted);
 
-        const int detailTop = tableTop + tableHeight + 8;
         DrawRectangle(margin, detailTop, tableWidth, detailsHeight, theme.panel2);
         DrawRectangleLinesEx(Rectangle{static_cast<float>(margin), static_cast<float>(detailTop), static_cast<float>(tableWidth), static_cast<float>(detailsHeight)}, 1.0f, theme.border);
 
@@ -820,18 +944,46 @@ int main() {
             DrawText(slot.address.c_str(), margin + 12, detailTop + 10, bodyFontSize, theme.good);
             DrawText("Rules", margin + 12, detailTop + 42, bodyFontSize, theme.border);
             int y = detailTop + 70;
-            int shown = 0;
+            int index = 0;
             for (const auto &[key, value] : slot.rules) {
-                if (shown++ >= 6) break;
-                DrawCell(key + " = " + value, margin + 12, y, tableWidth / 2 - 24, smallFontSize, theme.muted);
+                if (index++ < ruleScroll) continue;
+                if (index > ruleScroll + visiblePlayerRows) break;
+                DrawCell(key + " = " + value, margin + 12, y,
+                         tableWidth / 2 - scrollbarWidth - 24, smallFontSize, theme.muted);
                 y += 24;
+            }
+            if (maxRuleScroll > 0) {
+                DrawRectangleRec(ruleScrollbarTrack, theme.panel);
+                DrawLine(static_cast<int>(ruleScrollbarTrack.x), static_cast<int>(ruleScrollbarTrack.y),
+                         static_cast<int>(ruleScrollbarTrack.x),
+                         static_cast<int>(ruleScrollbarTrack.y + ruleScrollbarTrack.height), theme.border);
+                const float drawnRuleThumbY = ruleScrollbarTrack.y +
+                    ruleThumbTravel * ruleScroll / maxRuleScroll;
+                DrawRectangleRec(Rectangle{ruleScrollbarTrack.x + 3.0f, drawnRuleThumbY + 2.0f,
+                                           ruleScrollbarTrack.width - 6.0f,
+                                           std::max(0.0f, ruleThumbHeight - 4.0f)}, theme.border);
             }
             DrawText("Players", margin + tableWidth / 2, detailTop + 42, bodyFontSize, theme.border);
             y = detailTop + 70;
-            for (size_t i = 0; i < slot.playerRows.size() && i < 6; ++i) {
-                const PlayerRow &p = slot.playerRows[i];
-                DrawCell(std::to_string(p.score) + "  " + std::to_string(p.ping) + "  " + p.name, margin + tableWidth / 2, y, tableWidth / 2 - 24, smallFontSize, theme.text);
+            for (int row = 0; row < visiblePlayerRows; ++row) {
+                const int index = playerScroll + row;
+                if (index >= static_cast<int>(slot.playerRows.size())) break;
+                const PlayerRow &p = slot.playerRows[static_cast<size_t>(index)];
+                DrawCell(std::to_string(p.score) + "  " + std::to_string(p.ping) + "  " + p.name,
+                         margin + tableWidth / 2, y, tableWidth / 2 - scrollbarWidth - 16,
+                         smallFontSize, theme.text);
                 y += 24;
+            }
+            if (maxPlayerScroll > 0) {
+                DrawRectangleRec(playerScrollbarTrack, theme.panel);
+                DrawLine(static_cast<int>(playerScrollbarTrack.x), static_cast<int>(playerScrollbarTrack.y),
+                         static_cast<int>(playerScrollbarTrack.x),
+                         static_cast<int>(playerScrollbarTrack.y + playerScrollbarTrack.height), theme.border);
+                const float drawnPlayerThumbY = playerScrollbarTrack.y +
+                    playerThumbTravel * playerScroll / maxPlayerScroll;
+                DrawRectangleRec(Rectangle{playerScrollbarTrack.x + 3.0f, drawnPlayerThumbY + 2.0f,
+                                           playerScrollbarTrack.width - 6.0f,
+                                           std::max(0.0f, playerThumbHeight - 4.0f)}, theme.border);
             }
         }
 
