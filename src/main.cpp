@@ -470,7 +470,7 @@ static void ApplyStatusResponse(ServerSlot &slot, const std::string &payload, in
             player.score = std::stoi(ParseToken(line, pos));
             player.ping = std::stoi(ParseToken(line, pos));
             player.name = ParseToken(line, pos);
-            if (hideWallFly && player.name == "WallFly[BZZZ]") continue;
+            if (hideWallFly && (player.name == "WallFly[BZZZ]" || player.name == "Ghost[BOOO!]")) continue;
             slot.playerRows.push_back(std::move(player));
         } catch (...) {}
     }
